@@ -1,6 +1,6 @@
 # Beads Issue Tracker
 
-This project uses [Beads](https://github.com/beads-project/beads) (`bd`) for AI-native issue tracking.
+This project uses [Beads](https://github.com/steveyegge/beads) (`bd`) for AI-native issue tracking.
 
 ## Quick Start
 
