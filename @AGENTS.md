@@ -1,49 +1,66 @@
-## Task Tracking (Beads / bd)
-- Use `bd` for ALL tasks/issues (no markdown TODO lists).
-- Start of session: `bd ready`
-- Create work: `bd create "Title" -p 1 --description "Context + acceptance criteria"`
-- Update status: `bd update <id> --status in_progress`
-- Finish: `bd close <id> --reason "Done"`
-- End of session: `bd sync` (flush/import/export + git sync)
+# @AGENTS.md — Session Protocol
 
-# Agent Instructions
+## Read Order
 
-This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get started.
+1. `CLAUDE.md` — project identity, n8n config, sandbox rules
+2. `@AGENTS.md` (this file) — beads workflow, session lifecycle
+3. `AGENTS.md` — n8nac technical protocol (GitOps, validation, testing)
+4. relevant docs (`docs/SESSION-KICKOFF.md` for build plan)
+5. `bd ready` — find available work
 
-**For n8nac workflow operations:** Run `npx --yes n8nac init` first, then read the generated `AGENTS.md` for the full n8nac protocol (GitOps sync, research, validation, testing).
+## Workflow
 
-## Quick Reference
+Beads (`bd`) is the task ledger and durable shared memory for this repo.
 
 ```bash
-bd ready              # Find available work
-bd show <id>          # View issue details
-bd update <id> --status in_progress  # Claim work
-bd close <id>         # Complete work
-bd sync               # Sync with git
+bd ready                              # Find available work
+bd show <id>                          # Review issue details before starting
+bd update <id> --claim                # Claim work before implementation
+bd note <id> "progress note"          # Record progress during execution
+bd create --title="..." --description="..." --type=task --priority=2  # New work
+bd dep add <issue> <depends-on>       # Real sequencing when needed
+bd blocked                            # Inspect waits
+bd remember "fact" --key <name>       # Durable repo facts (NOT MEMORY.md)
+bd memories <keyword>                 # Search repo knowledge
+bd close <id> --reason "completed"    # Only on real completion
 ```
+
+## Authority Model
+
+- **Beads** = task state and durable repo memory (authoritative)
+- **`main` branch** = merged code truth (integration branch)
+- **Local memory/handoff files** = convenience only, never authoritative
+
+## Conventions
+
+**Claim before implementation.** Always `bd show` then `bd update --claim` before starting work. Makes ownership visible, prevents duplicate effort across sessions.
+
+**Note incomplete work in Beads.** Use `bd note <id> "..."` for progress, not just local files. When pausing mid-task, the note is what the next session sees. Local handoff context is a convenience — Beads is the record.
+
+**Close only on real completion.** Close a bead when the work is merged/done or explicitly superseded. Never close on commit alone. Never close on session end if work remains.
+
+**Smallest relevant validation first.** Don't run the full test suite reflexively. Choose the smallest meaningful check for the area touched (`npm run validate:workflows` for workflow changes, specific test files for code changes). Widen validation when risk justifies it.
+
+**Maintenance hygiene.** At natural boundaries (before session end, after a cluster of work), run `bd stale` to surface forgotten work. Not every session — just when the queue feels noisy.
 
 ## Landing the Plane (Session Completion)
 
-**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
+When ending a work session, complete ALL steps. Work is NOT complete until `git push` succeeds.
 
-**MANDATORY WORKFLOW:**
-
-1. **File issues for remaining work** - Create issues for anything that needs follow-up
-2. **Run quality gates** (if code changed) - Tests, linters, builds
-3. **Update issue status** - Close finished work, update in-progress items
-4. **PUSH TO REMOTE** - This is MANDATORY:
+1. **File issues** for remaining work (`bd create`)
+2. **Run quality gates** if code changed (tests, linters, `npm run validate:workflows`)
+3. **Update issue status** — close finished work, update in-progress items
+4. **Push to remote** (MANDATORY):
    ```bash
    git pull --rebase
    bd sync
    git push
    git status  # MUST show "up to date with origin"
    ```
-5. **Clean up** - Clear stashes, prune remote branches
-6. **Verify** - All changes committed AND pushed
-7. **Hand off** - Provide context for next session
+5. **Verify** — all changes committed AND pushed
 
-**CRITICAL RULES:**
+**Rules:**
 - Work is NOT complete until `git push` succeeds
-- NEVER stop before pushing - that leaves work stranded locally
-- NEVER say "ready to push when you are" - YOU must push
+- NEVER stop before pushing — that leaves work stranded locally
+- NEVER say "ready to push when you are" — YOU must push
 - If push fails, resolve and retry until it succeeds

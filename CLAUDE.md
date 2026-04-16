@@ -97,3 +97,14 @@ n8n Code nodes run in a restricted sandbox. These rules apply to ALL Code nodes 
 - **OpenRouter model IDs**: `anthropic/claude-haiku-4-5` works. `anthropic/claude-3.5-sonnet` is dead
 - **lmChatOpenAi typeVersion 1** accepts plain string model IDs. **Version 1.3** requires `{mode: 'list', value: 'model-id'}`
 - **Default LLM config for this project:** OpenRouter credential `mOL6UoYXfgKf6RZh`, model `anthropic/claude-haiku-4-5`, typeVersion 1.3
+
+
+<!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:ca08a54f -->
+## Beads Issue Tracker
+
+This project uses **bd (beads)** for issue tracking. Run `bd prime` for full workflow context.
+
+- Use `bd` for ALL task tracking — do NOT use TodoWrite, TaskCreate, or markdown TODO lists
+- Use `bd remember` for persistent knowledge — do NOT use MEMORY.md files
+- See `@AGENTS.md` for full workflow commands and session completion protocol
+<!-- END BEADS INTEGRATION -->
