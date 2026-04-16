@@ -25,6 +25,12 @@ n8nac-config.json
 .env.local
 .env.production
 
+# Agent instructions (instance-specific)
+AGENTS.md
+@AGENTS.md
+CLAUDE.md
+.claude/
+
 # OS
 .DS_Store
 Thumbs.db
