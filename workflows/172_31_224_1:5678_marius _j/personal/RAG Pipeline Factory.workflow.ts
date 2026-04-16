@@ -69,7 +69,7 @@ Example: "Build a RAG pipeline called Customer Support KB with in-memory store f
 
 OPTIONS:
 - Vector stores: "inMemory" (default), "qdrant", "supabase"
-- Data sources: "none" (default), "webUrl" (adds ingestion workflow)
+- Data sources: "none" (default), "webUrl" (URL scraping ingestion), "text" (raw text POST ingestion)
 
 WORKFLOW — follow ALL steps in order:
 
@@ -146,14 +146,20 @@ NOTES:
     GenerateRagPipeline = {
         name: 'generate_rag_pipeline',
         description:
-            'Generate n8n workflow JSON(s) for a RAG pipeline. Returns {"workflows":[...], "storeKey":"...", "vectorStore":"..."}. Each workflow in the array has {type, workflow} where type is "query" or "ingestion". Input: JSON string with name (string), vectorStore ("inMemory"|"qdrant"|"supabase"), dataSource ("none"|"webUrl").',
+            'Generate n8n workflow JSON(s) for a RAG pipeline. Returns {"workflows":[...], "storeKey":"...", "vectorStore":"..."}. Each workflow in the array has {type, workflow}. Input: JSON string with name (string), vectorStore ("inMemory"|"qdrant"|"supabase"), dataSource ("none"|"webUrl"|"text"). Returns error object if inputs are invalid.',
         language: 'javaScript',
         jsCode: `try {
   var raw = typeof query === "object" && query.query ? query.query : query;
-  var spec = typeof raw === "string" ? JSON.parse(raw) : raw;
+  var spec;
+  try { spec = typeof raw === "string" ? JSON.parse(raw) : raw; }
+  catch (pe) { return JSON.stringify({ error: "Invalid JSON input. Expected: {name, vectorStore, dataSource}. Parse error: " + pe.message }); }
   var name = spec.name || "My RAG Pipeline";
   var vs = spec.vectorStore || "inMemory";
   var ds = spec.dataSource || "none";
+  var validVs = ["inMemory", "qdrant", "supabase"];
+  var validDs = ["none", "webUrl", "text"];
+  if (validVs.indexOf(vs) === -1) return JSON.stringify({ error: "Invalid vectorStore: " + vs + ". Valid: " + validVs.join(", ") });
+  if (validDs.indexOf(ds) === -1) return JSON.stringify({ error: "Invalid dataSource: " + ds + ". Valid: " + validDs.join(", ") });
   var sk = name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
 
   function uuid() {
@@ -225,12 +231,35 @@ NOTES:
     iC["OpenAI Embeddings"] = { "ai_embedding": [[{ "node": ivn, "type": "ai_embedding", "index": 0 }]] };
     result.workflows.push({ type: "ingestion", workflow: { name: name + " - Ingestion", nodes: iNodes, connections: iC, settings: { executionOrder: "v1" } } });
   }
+  if (ds === "text") {
+    var tVs = vsn("insert", [600, 300]);
+    var tEmb = emb([800, 500]);
+    var tvn = tVs.name;
+    var tNodes = [
+      { id: uuid(), webhookId: uuid(), name: "Webhook Trigger", type: "n8n-nodes-base.webhook", typeVersion: 2, position: [0, 300],
+        parameters: { path: sk + "-ingest-text", httpMethod: "POST", responseMode: "lastNode" } },
+      { id: uuid(), name: "Set Text", type: "n8n-nodes-base.set", typeVersion: 3.4, position: [300, 300],
+        parameters: { mode: "manual", assignments: { assignments: [{ id: uuid(), name: "text", value: "={{ $json.body.text }}", type: "string" }] } } },
+      tVs,
+      { id: uuid(), name: "Default Data Loader", type: "@n8n/n8n-nodes-langchain.documentDefaultDataLoader", typeVersion: 1.1, position: [400, 500],
+        parameters: { dataType: "json", jsonMode: "allInputData", textSplittingMode: "custom" } },
+      { id: uuid(), name: "Text Splitter", type: "@n8n/n8n-nodes-langchain.textSplitterRecursiveCharacterTextSplitter", typeVersion: 1, position: [600, 500],
+        parameters: { chunkSize: 1000, chunkOverlap: 200 } },
+      tEmb
+    ];
+    var tC = { "Webhook Trigger": { "main": [[{ "node": "Set Text", "type": "main", "index": 0 }]] },
+      "Set Text": { "main": [[{ "node": tvn, "type": "main", "index": 0 }]] },
+      "Default Data Loader": { "ai_document": [[{ "node": tvn, "type": "ai_document", "index": 0 }]] },
+      "Text Splitter": { "ai_textSplitter": [[{ "node": "Default Data Loader", "type": "ai_textSplitter", "index": 0 }]] } };
+    tC["OpenAI Embeddings"] = { "ai_embedding": [[{ "node": tvn, "type": "ai_embedding", "index": 0 }]] };
+    result.workflows.push({ type: "ingestion", workflow: { name: name + " - Text Ingestion", nodes: tNodes, connections: tC, settings: { executionOrder: "v1" } } });
+  }
   return JSON.stringify(result);
 } catch (e) { return JSON.stringify({ error: e.message }); }`,
         specifyInputSchema: true,
         schemaType: 'manual',
         inputSchema:
-            '{"type":"object","properties":{"query":{"type":"string","description":"JSON: {name, vectorStore: \\"inMemory\\"|\\"qdrant\\"|\\"supabase\\", dataSource: \\"none\\"|\\"webUrl\\"}"}},"required":["query"]}',
+            '{"type":"object","properties":{"query":{"type":"string","description":"JSON: {name, vectorStore: \\"inMemory\\"|\\"qdrant\\"|\\"supabase\\", dataSource: \\"none\\"|\\"webUrl\\"|\\"text\\"}"}},"required":["query"]}',
     };
 
     @node({

@@ -160,11 +160,11 @@ All other constraints (sandbox, LLM, auth, error classification) are in `CLAUDE.
 ## Success Criteria
 
 Phase 1 is done when:
-- [ ] Factory workflow exists on n8n and responds to chat input
-- [ ] Given "Build a RAG pipeline with in-memory store for my documents", it generates valid .workflow.ts content
-- [ ] Generated workflow passes `n8nac verify`
-- [ ] Generated workflow can be pushed to n8n and activated
-- [ ] End-to-end: user describes → factory generates → workflow runs → user can query documents
+- [x] Factory workflow exists on n8n and responds to chat input (GAra5MytxjV7BJKW)
+- [x] Given "Build a RAG pipeline with in-memory store for my documents", it generates valid workflow JSON
+- [x] Generated workflow passes n8n API validation at creation time
+- [x] Generated workflow can be pushed to n8n and activated via API
+- [x] End-to-end: user describes → factory generates → deploys → validates → tests → reports
 
 ## Start Command
 

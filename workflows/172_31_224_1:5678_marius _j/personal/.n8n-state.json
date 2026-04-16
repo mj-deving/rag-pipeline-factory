@@ -1,8 +1,8 @@
 {
   "workflows": {
     "GAra5MytxjV7BJKW": {
-      "lastSyncedHash": "6d87b6a0735e556a3c93c8c0bd1bb7db5832471c6298c8842d0e8604e3bd623a",
-      "lastSyncedAt": "2026-04-16T14:01:59.157Z",
+      "lastSyncedHash": "8db8191a7809b87a8629172a8e7371b644d10a7f6a07a5a9a60160b8294bb502",
+      "lastSyncedAt": "2026-04-16T14:16:01.521Z",
       "filename": "RAG Pipeline Factory.workflow.ts"
     }
   }
