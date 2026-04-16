@@ -75,30 +75,70 @@ curl -X POST http://your-n8n:5678/webhook/<store_key>-ingest-text \
 
 ## Architecture
 
+### Factory Workflow
+
+```mermaid
+graph LR
+    subgraph Factory["RAG Pipeline Factory"]
+        CT[Chat Trigger] --> Agent[AI Agent<br/>Haiku 4.5]
+        Agent -.->|ai_languageModel| LLM[Haiku via<br/>OpenRouter]
+        Agent -.->|ai_tool| Gen[Generate<br/>RAG Pipeline]
+        Agent -.->|ai_tool| API[n8n API<br/>Tool]
+    end
+
+    Gen -->|workflow JSON| API
+    API -->|POST /api/v1/workflows| n8n[(n8n Instance)]
+    n8n --> QW[Query Workflow]
+    n8n --> IW[Ingestion Workflow]
+
+    style Factory fill:#1a1a2e,stroke:#e94560,color:#fff
+    style QW fill:#0f3460,stroke:#16213e,color:#fff
+    style IW fill:#0f3460,stroke:#16213e,color:#fff
+    style n8n fill:#ff6b35,stroke:#fff,color:#fff
 ```
-                    RAG PIPELINE FACTORY (5 nodes)
- ┌──────────────────────────────────────────────────────────┐
- │                                                          │
- │  Chat Trigger ──→ AI Agent (Haiku) ──→ generates spec    │
- │                       │                                  │
- │              ┌────────┴────────┐                         │
- │              │                 │                         │
- │     Generate Pipeline      n8n API                      │
- │     (template builder)     (deploy, validate, test)     │
- │                                                          │
- └──────────────────────────────────────────────────────────┘
-                         │
-                    creates on n8n
-                         │
-         ┌───────────────┼───────────────┐
-         ▼                               ▼
-   QUERY WORKFLOW (6 nodes)     INGESTION WORKFLOW (6 nodes)
- ┌──────────────────────┐    ┌──────────────────────────┐
- │ Chat → Agent → Search│    │ Webhook → HTTP/Set → VS  │
- │          ↑            │    │   ↑ Data Loader          │
- │    LLM (Haiku)       │    │   ↑ Text Splitter        │
- │ Vector Store ← Embed │    │   ↑ Embeddings           │
- └──────────────────────┘    └──────────────────────────┘
+
+### Generated Query Workflow (6 nodes)
+
+```mermaid
+graph LR
+    CT2[Chat Trigger] --> Agent2[AI Agent]
+    Agent2 -.->|ai_languageModel| LLM2[Haiku via<br/>OpenRouter]
+    Agent2 -.->|ai_tool| VS_Tool[Document<br/>Search Tool]
+    VS_Tool -.->|ai_vectorStore| VS[Vector Store<br/>inMemory / Qdrant / Supabase]
+    VS -.->|ai_embedding| Emb[OpenAI<br/>Embeddings]
+
+    style CT2 fill:#533483,stroke:#fff,color:#fff
+    style Agent2 fill:#e94560,stroke:#fff,color:#fff
+    style VS fill:#0f3460,stroke:#fff,color:#fff
+```
+
+### Generated Ingestion Workflow (6 nodes)
+
+```mermaid
+graph LR
+    WH[Webhook Trigger] --> HTTP[HTTP Request<br/>or Set Text]
+    HTTP --> VS2[Vector Store<br/>insert mode]
+    DL[Default Data<br/>Loader] -.->|ai_document| VS2
+    TS[Text Splitter<br/>1000 chars] -.->|ai_textSplitter| DL
+    Emb2[OpenAI<br/>Embeddings] -.->|ai_embedding| VS2
+
+    style WH fill:#533483,stroke:#fff,color:#fff
+    style VS2 fill:#0f3460,stroke:#fff,color:#fff
+```
+
+### Deploy-Validate Cycle
+
+```mermaid
+flowchart LR
+    A[Generate] --> B[Deploy]
+    B --> C[Validate]
+    C --> D[Activate]
+    D --> E[Test]
+    E --> F[Report]
+    F -.->|webhook URLs<br/>test results<br/>cost estimates| User((User))
+
+    style A fill:#e94560,stroke:#fff,color:#fff
+    style F fill:#0f3460,stroke:#fff,color:#fff
 ```
 
 ## Cost Estimates
