@@ -4,87 +4,101 @@
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 ![Code-First](https://img.shields.io/badge/code--first-n8nac-blue.svg)
 
-**A meta-workflow that builds RAG pipelines from natural language.** Describe what you want — the factory generates, deploys, validates, and tests a complete RAG system on n8n.
+**A meta-workflow that builds RAG pipelines from natural language.** Describe what you want in a chat — the factory generates, deploys, validates, tests, and reports on a complete RAG system running on n8n.
+
+This is **code writing code** — an AI agent that writes n8n workflow definitions, pushes them to a live instance, and verifies they work.
 
 ## How It Works
 
-Chat with the factory and describe the pipeline you want:
+Open the factory's chat interface and describe the pipeline you want:
 
 ```
-"Build a RAG pipeline called Customer Support KB with Qdrant store and web URL ingestion"
+Build a RAG pipeline called Customer Support KB with Qdrant store and web URL ingestion
 ```
 
-The factory:
-1. Parses your request into a structured spec
-2. Generates workflow JSON for query + ingestion pipelines
-3. Pushes both to n8n via REST API
-4. Validates node counts and connections
-5. Tests the ingestion webhook with a sample URL
-6. Reports results with workflow IDs, webhook URLs, and cost estimates
+The factory follows a 6-step cycle:
 
-## Architecture
+1. **Generate** — Builds workflow JSON from a template library (query + optional ingestion)
+2. **Deploy** — Creates workflows on n8n via REST API
+3. **Validate** — GETs each workflow back, checks node counts and connections
+4. **Activate** — Turns on the workflows so triggers are live
+5. **Test** — POSTs a sample URL to the ingestion webhook, sends a test query to the chat
+6. **Report** — Returns workflow IDs, webhook URLs, test results, and cost estimates
 
-```
-┌─────────────────────────────────────────────────────┐
-│              RAG PIPELINE FACTORY                    │
-│                                                     │
-│  Chat Trigger → AI Agent (Haiku) → Code Tools       │
-│                    │                                │
-│          ┌────────┴────────┐                        │
-│          │                 │                        │
-│  Generate RAG Pipeline   n8n API                    │
-│  (template builder)      (deploy + test)            │
-│                                                     │
-│  Output: 1-2 workflows per request                  │
-│  - Query workflow (chat + vector store + LLM)       │
-│  - Ingestion workflow (webhook + loader + embedder) │
-└─────────────────────────────────────────────────────┘
-```
+A single chat message produces a full build report with everything you need to start using the pipeline.
 
 ## Supported Options
 
 | Option | Values | Notes |
 |---|---|---|
 | **Vector Store** | `inMemory` (default) | No setup needed, data lost on restart |
-| | `qdrant` | Persistent, needs Qdrant credential in n8n |
-| | `supabase` | pgvector, needs Supabase credential in n8n |
-| **Data Source** | `none` (default) | Query-only pipeline |
-| | `webUrl` | Webhook that fetches + embeds URL content |
-| | `text` | Webhook that accepts raw text POST |
-| **Embedding** | OpenAI `text-embedding-3-small` | Via OpenRouter credential |
-| **LLM** | Claude Haiku 4.5 | Via OpenRouter, cost-optimized |
+| | `qdrant` | Persistent, scalable. Needs Qdrant credential in n8n |
+| | `supabase` | pgvector. Needs Supabase credential in n8n |
+| **Data Source** | `none` (default) | Query-only pipeline (load data separately) |
+| | `webUrl` | Webhook that fetches a URL, chunks, embeds, and stores |
+| | `text` | Webhook that accepts raw text, chunks, embeds, and stores |
+| **Embedding** | OpenAI `text-embedding-3-small` | Via OpenRouter |
+| **LLM** | Claude Haiku 4.5 | Via OpenRouter, cost-optimized for RAG |
 
 ## Usage Examples
 
-### Basic in-memory pipeline
+**Basic query pipeline:**
 ```
 Build a RAG pipeline called My KB
 ```
-Creates: 1 query workflow (6 nodes)
+Output: 1 query workflow (6 nodes) with in-memory vector store
 
-### Qdrant with web scraping
+**Qdrant with web scraping:**
 ```
 Build a RAG pipeline called Tech Docs with Qdrant and web URL ingestion
 ```
-Creates: 1 query workflow + 1 ingestion workflow (12 nodes total)
+Output: 1 query workflow + 1 ingestion workflow (12 nodes total)
 
-### Text ingestion pipeline
+**Text ingestion:**
 ```
 Build a RAG pipeline called Notes with in-memory store and text data source
 ```
-Creates: 1 query workflow + 1 text ingestion workflow
+Output: 1 query workflow + 1 text ingestion workflow
 
-### After creation — load documents
+**After creation — load documents:**
 ```bash
 # Web URL ingestion
 curl -X POST http://your-n8n:5678/webhook/<store_key>-ingest \
   -H "Content-Type: application/json" \
   -d '{"url":"https://example.com/docs/page"}'
 
-# Text ingestion
+# Raw text ingestion
 curl -X POST http://your-n8n:5678/webhook/<store_key>-ingest-text \
   -H "Content-Type: application/json" \
   -d '{"text":"Your document content goes here..."}'
+```
+
+## Architecture
+
+```
+                    RAG PIPELINE FACTORY (5 nodes)
+ ┌──────────────────────────────────────────────────────────┐
+ │                                                          │
+ │  Chat Trigger ──→ AI Agent (Haiku) ──→ generates spec    │
+ │                       │                                  │
+ │              ┌────────┴────────┐                         │
+ │              │                 │                         │
+ │     Generate Pipeline      n8n API                      │
+ │     (template builder)     (deploy, validate, test)     │
+ │                                                          │
+ └──────────────────────────────────────────────────────────┘
+                         │
+                    creates on n8n
+                         │
+         ┌───────────────┼───────────────┐
+         ▼                               ▼
+   QUERY WORKFLOW (6 nodes)     INGESTION WORKFLOW (6 nodes)
+ ┌──────────────────────┐    ┌──────────────────────────┐
+ │ Chat → Agent → Search│    │ Webhook → HTTP/Set → VS  │
+ │          ↑            │    │   ↑ Data Loader          │
+ │    LLM (Haiku)       │    │   ↑ Text Splitter        │
+ │ Vector Store ← Embed │    │   ↑ Embeddings           │
+ └──────────────────────┘    └──────────────────────────┘
 ```
 
 ## Cost Estimates
@@ -92,73 +106,93 @@ curl -X POST http://your-n8n:5678/webhook/<store_key>-ingest-text \
 | Operation | Cost | Details |
 |---|---|---|
 | Per query | ~$0.002 | Haiku: ~800 input + ~400 output tokens |
-| Per document | ~$0.01 | Embedding ~2000 tokens + chunking |
-| Monthly (100q + 10d/day) | ~$9 | Baseline estimate via OpenRouter |
+| Per document ingestion | ~$0.01 | Embedding ~2000 tokens + chunking overhead |
+| Monthly (100 queries + 10 docs/day) | ~$9 | Baseline estimate via OpenRouter |
 
 ## Setup
 
+### Prerequisites
+
+- A running [n8n](https://n8n.io) instance (self-hosted or cloud)
+- An [OpenRouter](https://openrouter.ai) API key configured as an `openAiApi` credential in n8n
+- Node.js 18+
+
+### Install
+
 ```bash
-# 1. Clone
 git clone https://github.com/mj-deving/rag-pipeline-factory.git
 cd rag-pipeline-factory
 npm install
 
-# 2. Connect to n8n
+# Connect to your n8n instance
 export N8N_API_KEY="<your n8n API key>"
 npm run setup:n8n -- http://<your-n8n-host>:5678
-
-# 3. Push the factory workflow
-npx --yes n8nac push "workflows/172_31_224_1:5678_marius _j/personal/RAG Pipeline Factory.workflow.ts"
-
-# 4. Activate it
-# Use the n8n UI or API to activate the RAG Pipeline Factory workflow
-
-# 5. Chat with the factory
-# Open the Chat Trigger in n8n → "Open in new window"
 ```
+
+### Deploy the Factory
+
+```bash
+# Push the factory workflow to n8n
+npx --yes n8nac push "workflows/<your-instance-dir>/RAG Pipeline Factory.workflow.ts"
+
+# Or find the file path after setup
+npx --yes n8nac list
+```
+
+Activate the workflow in the n8n UI, then open the Chat Trigger node and click **Open Chat**.
+
+### Credential Setup
+
+The factory and all generated pipelines use a single OpenRouter credential for both LLM and embeddings. Create it in n8n:
+
+1. Go to **Credentials** in n8n
+2. Add **OpenAI API** credential
+3. Set the base URL to `https://openrouter.ai/api/v1`
+4. Add your OpenRouter API key
+5. Name it `OpenRouter`
+
+For Qdrant or Supabase vector stores, add those credentials separately in n8n before using the generated pipelines.
+
+## Error Handling
+
+The factory validates inputs before generating:
+
+- Invalid `vectorStore` returns: `"Invalid vectorStore: xyz. Valid: inMemory, qdrant, supabase"`
+- Invalid `dataSource` returns: `"Invalid dataSource: xyz. Valid: none, webUrl, text"`
+- Malformed JSON returns a parse error with the expected format
+- Missing pipeline name defaults to "My RAG Pipeline"
 
 ## Tech Stack
 
-- **n8n** — workflow automation engine
-- **n8nac** — code-first workflow development (`.workflow.ts`)
-- **Claude Haiku 4.5** — LLM via OpenRouter (factory agent + generated pipelines)
-- **OpenAI Embeddings** — `text-embedding-3-small` via OpenRouter
-- **Beads** (`bd`) — AI-native issue tracker
+- **[n8n](https://n8n.io)** — workflow automation engine
+- **[n8nac](https://github.com/mj-deving/n8n-autopilot)** — code-first workflow development
+- **[Claude Haiku 4.5](https://docs.anthropic.com)** — LLM via OpenRouter
+- **[OpenAI Embeddings](https://platform.openai.com/docs/guides/embeddings)** — `text-embedding-3-small` via OpenRouter
+- **[Beads](https://github.com/steveyegge/beads)** — AI-native issue tracker
 
 ## Project Structure
 
 ```
-workflows/                    # n8nac-managed workflow files
-  172_.../personal/
-    RAG Pipeline Factory.workflow.ts  # The factory (5 nodes)
+workflows/                          # n8nac-managed workflow files
+  <instance>/personal/
+    RAG Pipeline Factory.workflow.ts  # The factory workflow (5 nodes)
 docs/
-  SESSION-KICKOFF.md          # Build plan and architecture
-scripts/                      # Scaffold and validation helpers
-.beads/                       # Issue tracking
+  SESSION-KICKOFF.md                # Original build plan and phased architecture
+scripts/
+  new-workflow.sh                   # Scaffold helper
+  validate-workflows.sh             # Credential-free local validation
+  check-secrets.sh                  # Pre-commit secret detection
+.beads/                             # Issue tracking database
 ```
 
-## Generated Pipeline Architecture
+## Build History
 
-### Query Workflow (6 nodes)
-```
-Chat Trigger → AI Agent → [Document Search Tool] → Vector Store (retrieve) + Embeddings
-                  ↑
-            LLM (Haiku)
-```
-
-### Ingestion Workflow — Web URL (6 nodes)
-```
-Webhook → HTTP Request → Vector Store (insert) ← Data Loader ← Text Splitter ← Embeddings
-```
-
-### Ingestion Workflow — Text (6 nodes)
-```
-Webhook → Set Text → Vector Store (insert) ← Data Loader ← Text Splitter ← Embeddings
-```
-
-## Factory Workflow ID
-
-`GAra5MytxjV7BJKW` — active on n8n, 5 nodes (Chat Trigger, AI Agent, Haiku Model, Generate Tool, API Tool)
+| Phase | Deliverable |
+|---|---|
+| Phase 1 | Core factory: Chat Trigger + AI Agent + Generate Tool + API Tool |
+| Phase 2 | Template library: 3 vector stores (inMemory, Qdrant, Supabase) + web URL ingestion |
+| Phase 3 | Deploy-validate loop: live webhook testing, cost reporting, webhookId fix |
+| Phase 4 | Polish: input validation, text ingestion, documentation |
 
 ## License
 
