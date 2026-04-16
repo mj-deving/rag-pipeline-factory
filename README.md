@@ -4,9 +4,23 @@
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 ![Code-First](https://img.shields.io/badge/code--first-n8nac-blue.svg)
 
-**A meta-workflow that builds RAG pipelines from natural language.** Describe what you want in a chat — the factory generates, deploys, validates, tests, and reports on a complete RAG system running on n8n.
+**Tell it what you want in a chat — get a fully deployed, tested RAG pipeline in 74 seconds.** The factory generates workflow JSON from deterministic templates (not LLM guesswork), deploys to n8n, validates every node connection, and runs live tests — all from a single message.
 
 This is **code writing code** — an AI agent that writes n8n workflow definitions, pushes them to a live instance, and verifies they work.
+
+## Benchmark: Factory vs Traditional
+
+Traditional n8n agents ask the LLM to generate workflow JSON from scratch — 14 round-trips, each replaying the full conversation. The factory uses deterministic templates that produce valid JSON in 20ms, cutting the LLM out of the most error-prone step.
+
+| Metric | Traditional (9 nodes) | Factory (5 nodes) | Savings |
+|---|---|---|---|
+| **LLM rounds** | 14 | 8.25 avg | **41% fewer** |
+| **Total tokens** | ~131,616 | ~58,233 | **56% fewer** |
+| **Cost per build** | $0.122 | $0.052 | **57% cheaper** |
+| **Workflow JSON** | LLM-generated (can malform) | Deterministic template | **100% reliable** |
+| **Execution time** | N/A (not built) | 74s avg | — |
+
+> Measured across 4 factory runs using Claude Haiku 4.5 via OpenRouter. Traditional approach modeled analytically (optimized 9-node design). Full methodology in [`benchmark.md`](benchmark.md).
 
 ## How It Works
 
@@ -228,15 +242,6 @@ scripts/
   check-secrets.sh                  # Pre-commit secret detection
 .beads/                             # Issue tracking database
 ```
-
-## Build History
-
-| Phase | Deliverable |
-|---|---|
-| Phase 1 | Core factory: Chat Trigger + AI Agent + Generate Tool + API Tool |
-| Phase 2 | Template library: 3 vector stores (inMemory, Qdrant, Supabase) + web URL ingestion |
-| Phase 3 | Deploy-validate loop: live webhook testing, cost reporting, webhookId fix |
-| Phase 4 | Polish: input validation, text ingestion, documentation |
 
 ## License
 
