@@ -1,1 +1,7 @@
-{"database":"beads.db","jsonl_export":"issues.jsonl"}
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "rag_pipeline_factory",
+  "project_id": "16e12a36-f82c-487f-9911-cf0dc7abc543"
+}
