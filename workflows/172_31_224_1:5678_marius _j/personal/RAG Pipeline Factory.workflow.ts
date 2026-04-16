@@ -65,28 +65,58 @@ Example: "Build a RAG pipeline called Customer Support KB with in-memory store f
         promptType: 'define',
         text: '={{ $json.chatInput }}',
         options: {
-            systemMessage: `You are the RAG Pipeline Factory v0.2 — an AI agent that builds complete RAG pipelines on n8n.
+            systemMessage: `You are the RAG Pipeline Factory v0.3 — an AI agent that builds, validates, tests, and reports on RAG pipelines.
 
-AVAILABLE OPTIONS:
-- Vector stores: "inMemory" (default, no setup), "qdrant" (needs Qdrant credential in n8n), "supabase" (needs Supabase credential in n8n)
-- Data sources: "none" (default, query-only), "webUrl" (adds ingestion workflow that fetches URLs)
-- Embedding model: "openai" (via OpenRouter, always used)
+OPTIONS:
+- Vector stores: "inMemory" (default), "qdrant", "supabase"
+- Data sources: "none" (default), "webUrl" (adds ingestion workflow)
 
-STEPS:
-1. Parse the user request for: pipeline name, vector store type, data source
-2. Call generate_rag_pipeline with JSON: {"name":"...", "vectorStore":"inMemory|qdrant|supabase", "dataSource":"none|webUrl"}
-3. The tool returns {"workflows":[...], "storeKey":"...", "vectorStore":"..."}
-4. For EACH workflow in the array, call n8n_api to create it:
-   {"method":"POST", "path":"/api/v1/workflows", "body": <the workflow object>}
-5. Activate each created workflow:
-   {"method":"POST", "path":"/api/v1/workflows/<id>/activate"}
-6. Report to the user: workflow IDs, what each does, how to use them
+WORKFLOW — follow ALL steps in order:
 
-IMPORTANT NOTES:
-- For qdrant/supabase: tell user to configure the credential in n8n UI before using
-- For webUrl ingestion: tell user the webhook URL to POST URLs to (POST with {"url":"https://..."})
+STEP 1 — GENERATE: Call generate_rag_pipeline with: {"name":"...", "vectorStore":"inMemory|qdrant|supabase", "dataSource":"none|webUrl"}
+
+STEP 2 — DEPLOY: For each workflow in the returned array:
+  a. Create: {"method":"POST", "path":"/api/v1/workflows", "body": <workflow object>}
+  b. Note the returned workflow ID
+
+STEP 3 — VALIDATE: For each created workflow:
+  a. GET it: {"method":"GET", "path":"/api/v1/workflows/<id>"}
+  b. Check the response has the expected number of nodes (6 for query, 6 for ingestion)
+  c. Check connections exist (the response will include them)
+  d. If validation fails, report the error and stop
+
+STEP 4 — ACTIVATE: For each validated workflow:
+  {"method":"POST", "path":"/api/v1/workflows/<id>/activate"}
+
+STEP 5 — TEST (only for inMemory pipelines, skip for qdrant/supabase):
+  Use the n8n_api tool for ALL tests — it auto-prefixes http://localhost:5678.
+  a. If ingestion workflow exists, test it by calling n8n_api with:
+     {"method":"POST", "path":"/webhook/<storeKey>-ingest", "body":{"url":"https://example.com"}}
+     Pass = any non-error response. Fail = error in response.
+  b. Test query workflow by calling n8n_api with:
+     {"method":"POST", "path":"/webhook/<chatWebhookId>/chat", "body":{"chatInput":"What documents do you have?"}}
+     Pass = any response (even "no documents loaded"). Fail = error/timeout.
+     The chatWebhookId is in the Chat Trigger node's webhookId field from the creation response.
+  c. For qdrant/supabase: report "SKIPPED — configure credentials in n8n UI first"
+  IMPORTANT: Do NOT skip tests for inMemory. Use the n8n_api tool with /webhook/ paths — it works.
+
+STEP 6 — REPORT: Include ALL of these:
+  - Pipeline name and vector store type
+  - Workflow IDs with active status (query + ingestion if applicable)
+  - Validation result: node count check (expected vs actual)
+  - Test results per workflow: PASS / FAIL / SKIPPED with detail
+  - Webhook URLs for ingestion (if applicable)
+  - Chat URL for query
+  - Cost estimates:
+    * Per query: ~0.002 USD (Haiku input ~800 tokens + output ~400 tokens at $0.80/$4 per 1M)
+    * Per document ingestion: ~0.01 USD (embedding ~2000 tokens at $0.02/1M + chunking overhead)
+    * Monthly estimate for 100 queries/day + 10 docs/day: ~$9/month
+  - Setup instructions (credentials for qdrant/supabase, data loading for inMemory)
+
+NOTES:
+- The storeKey links query and ingestion workflows (same vector store key)
 - In-memory data is lost on n8n restart
-- The storeKey links query and ingestion workflows together`,
+- The chatWebhookId is found in the query workflow's Chat Trigger node (look for webhookId in the creation response)`,
         },
     };
 
@@ -102,6 +132,7 @@ IMPORTANT NOTES:
         model: 'anthropic/claude-haiku-4-5',
         options: {
             temperature: 0.1,
+            maxTokens: 4096,
         },
     };
 
@@ -149,8 +180,9 @@ IMPORTANT NOTES:
 
   var qVs = vsn("retrieve");
   var qEmb = emb();
+  var chatWebhookId = uuid();
   var qNodes = [
-    { id: uuid(), name: "Chat Trigger", type: "@n8n/n8n-nodes-langchain.chatTrigger", typeVersion: 1.4, position: [0, 300],
+    { id: uuid(), webhookId: chatWebhookId, name: "Chat Trigger", type: "@n8n/n8n-nodes-langchain.chatTrigger", typeVersion: 1.4, position: [0, 300],
       parameters: { "public": true, mode: "hostedChat", authentication: "none", initialMessages: "Hello! Ask me anything about your documents." } },
     { id: uuid(), name: "AI Agent", type: "@n8n/n8n-nodes-langchain.agent", typeVersion: 3.1, position: [400, 300],
       parameters: { promptType: "define", text: "={{ $json.chatInput }}", options: { systemMessage: "You are a helpful assistant for the " + name + " knowledge base. Use the document search tool to find relevant information. Always cite sources. If no results found, tell the user to load documents first." } } },
@@ -167,7 +199,7 @@ IMPORTANT NOTES:
   qC[vn] = { "ai_vectorStore": [[{ "node": "Document Search", "type": "ai_vectorStore", "index": 0 }]] };
   qC["OpenAI Embeddings"] = { "ai_embedding": [[{ "node": vn, "type": "ai_embedding", "index": 0 }]] };
 
-  var result = { workflows: [], storeKey: sk, vectorStore: vs };
+  var result = { workflows: [], storeKey: sk, vectorStore: vs, chatWebhookId: chatWebhookId };
   result.workflows.push({ type: "query", workflow: { name: name, nodes: qNodes, connections: qC, settings: { executionOrder: "v1" } } });
 
   if (ds === "webUrl") {
@@ -175,7 +207,7 @@ IMPORTANT NOTES:
     var iEmb = emb([800, 500]);
     var ivn = iVs.name;
     var iNodes = [
-      { id: uuid(), name: "Webhook Trigger", type: "n8n-nodes-base.webhook", typeVersion: 2, position: [0, 300],
+      { id: uuid(), webhookId: uuid(), name: "Webhook Trigger", type: "n8n-nodes-base.webhook", typeVersion: 2, position: [0, 300],
         parameters: { path: sk + "-ingest", httpMethod: "POST", responseMode: "lastNode" } },
       { id: uuid(), name: "HTTP Request", type: "n8n-nodes-base.httpRequest", typeVersion: 4.2, position: [300, 300],
         parameters: { url: "={{ $json.body.url }}", options: {} } },
@@ -236,8 +268,8 @@ IMPORTANT NOTES:
 
   var response = await this.helpers.httpRequest(reqConfig);
   var resStr = JSON.stringify(response, null, 2);
-  if (resStr.length > 4000) {
-    return resStr.substring(0, 4000) + "\\n... truncated (" + resStr.length + " chars total)";
+  if (resStr.length > 8000) {
+    return resStr.substring(0, 8000) + "\\n... truncated (" + resStr.length + " chars total)";
   }
   return resStr;
 } catch (e) {
