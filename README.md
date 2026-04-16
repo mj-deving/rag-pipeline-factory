@@ -91,10 +91,6 @@ graph LR
     n8n --> QW[Query Workflow]
     n8n --> IW[Ingestion Workflow]
 
-    style Factory fill:#1a1a2e,stroke:#e94560,color:#fff
-    style QW fill:#0f3460,stroke:#16213e,color:#fff
-    style IW fill:#0f3460,stroke:#16213e,color:#fff
-    style n8n fill:#ff6b35,stroke:#fff,color:#fff
 ```
 
 ### Generated Query Workflow (6 nodes)
@@ -107,9 +103,6 @@ graph LR
     VS_Tool -.->|ai_vectorStore| VS[Vector Store<br/>inMemory / Qdrant / Supabase]
     VS -.->|ai_embedding| Emb[OpenAI<br/>Embeddings]
 
-    style CT2 fill:#533483,stroke:#fff,color:#fff
-    style Agent2 fill:#e94560,stroke:#fff,color:#fff
-    style VS fill:#0f3460,stroke:#fff,color:#fff
 ```
 
 ### Generated Ingestion Workflow (6 nodes)
@@ -122,8 +115,6 @@ graph LR
     TS[Text Splitter<br/>1000 chars] -.->|ai_textSplitter| DL
     Emb2[OpenAI<br/>Embeddings] -.->|ai_embedding| VS2
 
-    style WH fill:#533483,stroke:#fff,color:#fff
-    style VS2 fill:#0f3460,stroke:#fff,color:#fff
 ```
 
 ### Deploy-Validate Cycle
@@ -137,8 +128,6 @@ flowchart LR
     E --> F[Report]
     F -.->|webhook URLs<br/>test results<br/>cost estimates| User((User))
 
-    style A fill:#e94560,stroke:#fff,color:#fff
-    style F fill:#0f3460,stroke:#fff,color:#fff
 ```
 
 ## Cost Estimates
