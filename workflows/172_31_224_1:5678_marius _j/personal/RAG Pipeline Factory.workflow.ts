@@ -65,38 +65,28 @@ Example: "Build a RAG pipeline called Customer Support KB with in-memory store f
         promptType: 'define',
         text: '={{ $json.chatInput }}',
         options: {
-            systemMessage: `You are the RAG Pipeline Factory — an AI agent that builds complete RAG (Retrieval-Augmented Generation) pipelines on n8n from natural language descriptions.
+            systemMessage: `You are the RAG Pipeline Factory v0.2 — an AI agent that builds complete RAG pipelines on n8n.
 
-When a user describes a RAG pipeline they want, follow these steps:
+AVAILABLE OPTIONS:
+- Vector stores: "inMemory" (default, no setup), "qdrant" (needs Qdrant credential in n8n), "supabase" (needs Supabase credential in n8n)
+- Data sources: "none" (default, query-only), "webUrl" (adds ingestion workflow that fetches URLs)
+- Embedding model: "openai" (via OpenRouter, always used)
 
-1. Parse their request to determine:
-   - Pipeline name (ask if unclear, default: "My RAG Pipeline")
-   - Vector store type: only "inMemory" is supported in v0.1
-   - Embedding model: only "openai" is supported in v0.1
+STEPS:
+1. Parse the user request for: pipeline name, vector store type, data source
+2. Call generate_rag_pipeline with JSON: {"name":"...", "vectorStore":"inMemory|qdrant|supabase", "dataSource":"none|webUrl"}
+3. The tool returns {"workflows":[...], "storeKey":"...", "vectorStore":"..."}
+4. For EACH workflow in the array, call n8n_api to create it:
+   {"method":"POST", "path":"/api/v1/workflows", "body": <the workflow object>}
+5. Activate each created workflow:
+   {"method":"POST", "path":"/api/v1/workflows/<id>/activate"}
+6. Report to the user: workflow IDs, what each does, how to use them
 
-2. Call the generate_rag_pipeline tool with a JSON string:
-   {"name": "Pipeline Name", "vectorStore": "inMemory", "embeddingModel": "openai"}
-
-3. Parse the returned workflow JSON and call the n8n_api tool to create it:
-   {"method": "POST", "path": "/api/v1/workflows", "body": <paste the entire workflow JSON from step 2>}
-
-4. From the API response, extract the workflow ID.
-
-5. Activate the workflow by calling n8n_api:
-   {"method": "POST", "path": "/api/v1/workflows/<id>/activate"}
-
-6. Report to the user:
-   - Workflow name and ID
-   - What the pipeline does (RAG query over documents)
-   - How to load data: use the n8n UI to add a data loading trigger
-   - How to query: open the chat interface at the workflow URL
-   - The in-memory vector store key used (for connecting data loaders)
-
-Current limitations (v0.1):
-- Only in-memory vector store (data lost on n8n restart)
-- Only OpenAI-compatible embeddings via OpenRouter
-- Only Claude Haiku for response generation
-- No automatic data ingestion — user loads data separately`,
+IMPORTANT NOTES:
+- For qdrant/supabase: tell user to configure the credential in n8n UI before using
+- For webUrl ingestion: tell user the webhook URL to POST URLs to (POST with {"url":"https://..."})
+- In-memory data is lost on n8n restart
+- The storeKey links query and ingestion workflows together`,
         },
     };
 
@@ -125,140 +115,90 @@ Current limitations (v0.1):
     GenerateRagPipeline = {
         name: 'generate_rag_pipeline',
         description:
-            'Generate a complete n8n workflow JSON for a RAG pipeline. Returns the workflow JSON object ready to be created via the n8n API. Input must be a JSON string with fields: name (string, pipeline display name), vectorStore (string, currently only "inMemory"), embeddingModel (string, currently only "openai").',
+            'Generate n8n workflow JSON(s) for a RAG pipeline. Returns {"workflows":[...], "storeKey":"...", "vectorStore":"..."}. Each workflow in the array has {type, workflow} where type is "query" or "ingestion". Input: JSON string with name (string), vectorStore ("inMemory"|"qdrant"|"supabase"), dataSource ("none"|"webUrl").',
         language: 'javaScript',
         jsCode: `try {
   var raw = typeof query === "object" && query.query ? query.query : query;
   var spec = typeof raw === "string" ? JSON.parse(raw) : raw;
-
-  var pipelineName = spec.name || "My RAG Pipeline";
-  var vectorStore = spec.vectorStore || "inMemory";
-  var embeddingModel = spec.embeddingModel || "openai";
+  var name = spec.name || "My RAG Pipeline";
+  var vs = spec.vectorStore || "inMemory";
+  var ds = spec.dataSource || "none";
+  var sk = name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
 
   function uuid() {
     return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function(c) {
       var r = Math.random() * 16 | 0;
-      var v = c === "x" ? r : (r & 0x3 | 0x8);
-      return v.toString(16);
+      return (c === "x" ? r : (r & 0x3 | 0x8)).toString(16);
     });
   }
-
-  var storeKey = pipelineName.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
-
-  var nodes = [
-    {
-      id: uuid(),
-      name: "Chat Trigger",
-      type: "@n8n/n8n-nodes-langchain.chatTrigger",
-      typeVersion: 1.4,
-      position: [0, 300],
-      parameters: {
-        "public": true,
-        mode: "hostedChat",
-        authentication: "none",
-        initialMessages: "Hello! Ask me anything about your documents.\\nI will search through the loaded knowledge base to find answers."
-      }
-    },
-    {
-      id: uuid(),
-      name: "AI Agent",
-      type: "@n8n/n8n-nodes-langchain.agent",
-      typeVersion: 3.1,
-      position: [400, 300],
-      parameters: {
-        promptType: "define",
-        text: "={{ $json.chatInput }}",
-        options: {
-          systemMessage: "You are a helpful assistant for the " + pipelineName + " knowledge base. Use the document search tool to find relevant information before answering questions. Always cite which documents your answer is based on. If the vector store returns no results, tell the user that no documents have been loaded yet and suggest they add documents through the n8n workflow editor."
-        }
-      }
-    },
-    {
-      id: uuid(),
-      name: "Haiku via OpenRouter",
-      type: "@n8n/n8n-nodes-langchain.lmChatOpenAi",
-      typeVersion: 1,
-      position: [200, 600],
-      parameters: {
-        model: "anthropic/claude-haiku-4-5",
-        options: { temperature: 0.3 }
-      },
-      credentials: {
-        openAiApi: { id: "mOL6UoYXfgKf6RZh", name: "OpenRouter" }
-      }
-    },
-    {
-      id: uuid(),
-      name: "Document Search",
-      type: "@n8n/n8n-nodes-langchain.toolVectorStore",
-      typeVersion: 1.1,
-      position: [600, 600],
-      parameters: {
-        name: pipelineName + " documents",
-        description: "stored documents and knowledge base content for " + pipelineName,
-        topK: 4
-      }
-    },
-    {
-      id: uuid(),
-      name: "In-Memory Vector Store",
-      type: "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
-      typeVersion: 1.3,
-      position: [800, 600],
-      parameters: {
-        mode: "retrieve",
-        memoryKey: { mode: "list", value: storeKey + "_store" }
-      }
-    },
-    {
-      id: uuid(),
-      name: "OpenAI Embeddings",
-      type: "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
-      typeVersion: 1.2,
-      position: [1000, 600],
-      parameters: {
-        model: "text-embedding-3-small",
-        options: {}
-      },
-      credentials: {
-        openAiApi: { id: "mOL6UoYXfgKf6RZh", name: "OpenRouter" }
-      }
+  function emb(pos) {
+    return { id: uuid(), name: "OpenAI Embeddings", type: "@n8n/n8n-nodes-langchain.embeddingsOpenAi", typeVersion: 1.2, position: pos || [1000, 600],
+      parameters: { model: "text-embedding-3-small", options: {} }, credentials: { openAiApi: { id: "mOL6UoYXfgKf6RZh", name: "OpenRouter" } } };
+  }
+  function vsn(mode, pos) {
+    var n = { id: uuid(), position: pos || [800, 600], typeVersion: 1.3 };
+    if (vs === "qdrant") { n.name = "Qdrant Vector Store"; n.type = "@n8n/n8n-nodes-langchain.vectorStoreQdrant";
+      n.parameters = { mode: mode, qdrantCollection: { mode: "list", value: sk + "_collection" } };
+    } else if (vs === "supabase") { n.name = "Supabase Vector Store"; n.type = "@n8n/n8n-nodes-langchain.vectorStoreSupabase";
+      n.parameters = { mode: mode, tableName: { mode: "list", value: sk + "_documents" } };
+    } else { n.name = "In-Memory Vector Store"; n.type = "@n8n/n8n-nodes-langchain.vectorStoreInMemory";
+      n.parameters = { mode: mode, memoryKey: { mode: "list", value: sk + "_store" } };
     }
+    return n;
+  }
+
+  var qVs = vsn("retrieve");
+  var qEmb = emb();
+  var qNodes = [
+    { id: uuid(), name: "Chat Trigger", type: "@n8n/n8n-nodes-langchain.chatTrigger", typeVersion: 1.4, position: [0, 300],
+      parameters: { "public": true, mode: "hostedChat", authentication: "none", initialMessages: "Hello! Ask me anything about your documents." } },
+    { id: uuid(), name: "AI Agent", type: "@n8n/n8n-nodes-langchain.agent", typeVersion: 3.1, position: [400, 300],
+      parameters: { promptType: "define", text: "={{ $json.chatInput }}", options: { systemMessage: "You are a helpful assistant for the " + name + " knowledge base. Use the document search tool to find relevant information. Always cite sources. If no results found, tell the user to load documents first." } } },
+    { id: uuid(), name: "Haiku via OpenRouter", type: "@n8n/n8n-nodes-langchain.lmChatOpenAi", typeVersion: 1, position: [200, 600],
+      parameters: { model: "anthropic/claude-haiku-4-5", options: { temperature: 0.3 } }, credentials: { openAiApi: { id: "mOL6UoYXfgKf6RZh", name: "OpenRouter" } } },
+    { id: uuid(), name: "Document Search", type: "@n8n/n8n-nodes-langchain.toolVectorStore", typeVersion: 1.1, position: [600, 600],
+      parameters: { name: name + " documents", description: "knowledge base content for " + name, topK: 4 } },
+    qVs, qEmb
   ];
+  var vn = qVs.name;
+  var qC = { "Chat Trigger": { "main": [[{ "node": "AI Agent", "type": "main", "index": 0 }]] },
+    "Haiku via OpenRouter": { "ai_languageModel": [[{ "node": "AI Agent", "type": "ai_languageModel", "index": 0 }]] },
+    "Document Search": { "ai_tool": [[{ "node": "AI Agent", "type": "ai_tool", "index": 0 }]] } };
+  qC[vn] = { "ai_vectorStore": [[{ "node": "Document Search", "type": "ai_vectorStore", "index": 0 }]] };
+  qC["OpenAI Embeddings"] = { "ai_embedding": [[{ "node": vn, "type": "ai_embedding", "index": 0 }]] };
 
-  var connections = {
-    "Chat Trigger": {
-      "main": [[{ "node": "AI Agent", "type": "main", "index": 0 }]]
-    },
-    "Haiku via OpenRouter": {
-      "ai_languageModel": [[{ "node": "AI Agent", "type": "ai_languageModel", "index": 0 }]]
-    },
-    "Document Search": {
-      "ai_tool": [[{ "node": "AI Agent", "type": "ai_tool", "index": 0 }]]
-    },
-    "In-Memory Vector Store": {
-      "ai_vectorStore": [[{ "node": "Document Search", "type": "ai_vectorStore", "index": 0 }]]
-    },
-    "OpenAI Embeddings": {
-      "ai_embedding": [[{ "node": "In-Memory Vector Store", "type": "ai_embedding", "index": 0 }]]
-    }
-  };
+  var result = { workflows: [], storeKey: sk, vectorStore: vs };
+  result.workflows.push({ type: "query", workflow: { name: name, nodes: qNodes, connections: qC, settings: { executionOrder: "v1" } } });
 
-  var workflowJson = {
-    name: pipelineName,
-    nodes: nodes,
-    connections: connections,
-    settings: { executionOrder: "v1" }
-  };
-
-  return JSON.stringify(workflowJson);
-} catch (e) {
-  return JSON.stringify({ error: e.message });
-}`,
+  if (ds === "webUrl") {
+    var iVs = vsn("insert", [600, 300]);
+    var iEmb = emb([800, 500]);
+    var ivn = iVs.name;
+    var iNodes = [
+      { id: uuid(), name: "Webhook Trigger", type: "n8n-nodes-base.webhook", typeVersion: 2, position: [0, 300],
+        parameters: { path: sk + "-ingest", httpMethod: "POST", responseMode: "lastNode" } },
+      { id: uuid(), name: "HTTP Request", type: "n8n-nodes-base.httpRequest", typeVersion: 4.2, position: [300, 300],
+        parameters: { url: "={{ $json.body.url }}", options: {} } },
+      iVs,
+      { id: uuid(), name: "Default Data Loader", type: "@n8n/n8n-nodes-langchain.documentDefaultDataLoader", typeVersion: 1.1, position: [400, 500],
+        parameters: { dataType: "json", jsonMode: "allInputData", textSplittingMode: "custom" } },
+      { id: uuid(), name: "Text Splitter", type: "@n8n/n8n-nodes-langchain.textSplitterRecursiveCharacterTextSplitter", typeVersion: 1, position: [600, 500],
+        parameters: { chunkSize: 1000, chunkOverlap: 200 } },
+      iEmb
+    ];
+    var iC = { "Webhook Trigger": { "main": [[{ "node": "HTTP Request", "type": "main", "index": 0 }]] },
+      "HTTP Request": { "main": [[{ "node": ivn, "type": "main", "index": 0 }]] },
+      "Default Data Loader": { "ai_document": [[{ "node": ivn, "type": "ai_document", "index": 0 }]] },
+      "Text Splitter": { "ai_textSplitter": [[{ "node": "Default Data Loader", "type": "ai_textSplitter", "index": 0 }]] } };
+    iC["OpenAI Embeddings"] = { "ai_embedding": [[{ "node": ivn, "type": "ai_embedding", "index": 0 }]] };
+    result.workflows.push({ type: "ingestion", workflow: { name: name + " - Ingestion", nodes: iNodes, connections: iC, settings: { executionOrder: "v1" } } });
+  }
+  return JSON.stringify(result);
+} catch (e) { return JSON.stringify({ error: e.message }); }`,
         specifyInputSchema: true,
         schemaType: 'manual',
         inputSchema:
-            '{"type":"object","properties":{"query":{"type":"string","description":"JSON string with fields: name (pipeline name), vectorStore (\\"inMemory\\"), embeddingModel (\\"openai\\")"}},"required":["query"]}',
+            '{"type":"object","properties":{"query":{"type":"string","description":"JSON: {name, vectorStore: \\"inMemory\\"|\\"qdrant\\"|\\"supabase\\", dataSource: \\"none\\"|\\"webUrl\\"}"}},"required":["query"]}',
     };
 
     @node({
