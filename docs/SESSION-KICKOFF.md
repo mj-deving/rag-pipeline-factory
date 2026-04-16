@@ -94,13 +94,9 @@ Factory Chat UI (Chat Trigger)
 - Claude Haiku 4.5 via OpenRouter (default — cheapest, best for agents)
 - Model configurable in spec
 
-## Available n8n Credentials (on our instance)
+## Credentials, Instance, Constraints
 
-| Credential | ID | Type | Use For |
-|---|---|---|---|
-| OpenRouter | `mOL6UoYXfgKf6RZh` | openAiApi | LLM (Haiku) + Embeddings |
-| Google Gemini | `FVE8T8mYCgIRpSyv` | googlePalmApi | Embeddings alternative |
-| Telegram Bot | `nzmbw9ZNGZdA9sZp` | telegramApi | Optional notification |
+**Read `CLAUDE.md` first** — it has n8n instance details, credential IDs, sandbox rules, error classification, and LLM cost control. Everything below assumes you've read it.
 
 ## n8n RAG Nodes Available
 
@@ -116,29 +112,14 @@ Factory Chat UI (Chat Trigger)
 
 **Chains:** Retrieval QA Chain, Conversational Retrieval Chain
 
-## Critical Constraints
+## n8nac Push Path
 
-### n8n Sandbox Rules (MUST follow)
-- No `require('fs')`, no `fetch()`, no `require('http')`
-- Only `this.helpers.httpRequest()` for HTTP calls
-- Persistence via `$getWorkflowStaticData('global')` only
-- `query` with `specifyInputSchema: true` → access via `query.query`
+Always use full path for push in this project:
+```bash
+npx --yes n8nac push "workflows/172_31_224_1:5678_marius _j/personal/<filename>.workflow.ts"
+```
 
-### LLM Rules
-- **Haiku only** for n8n agents (never Sonnet — $10 burned in 8 calls once)
-- Gemini + n8n tools = broken (null args). Use Claude Haiku.
-- OpenRouter model ID: `anthropic/claude-haiku-4-5`
-- lmChatOpenAi **typeVersion 1.3** requires `{mode: 'list', value: 'model-id'}` object
-
-### n8nac Rules
-- Always use full path for push: `npx --yes n8nac push workflows/172_31_224_1:5678_marius\ _j/personal/<filename>.workflow.ts`
-- Always verify after push: `npx --yes n8nac verify <id>`
-- Always activate then test with `--prod`: `npx --yes n8nac workflow activate <id> && npx --yes n8nac test <id> --prod`
-- Research nodes before using: `npx --yes n8nac skills node-info <nodeName>`
-
-### Auth
-- n8n API uses `X-N8N-API-KEY` header, NOT `Authorization: Bearer`
-- API key available via `$N8N_API_KEY` env var
+All other constraints (sandbox, LLM, auth, error classification) are in `CLAUDE.md`.
 
 ## Phased Build Plan
 
@@ -192,4 +173,4 @@ cd ~/projects/rag-pipeline-factory
 npm run new-workflow -- pipelines/01-rag-factory "RAG Pipeline Factory"
 ```
 
-Then read CLAUDE.md and AGENTS.md, and start building Phase 1.
+CLAUDE.md is auto-read at session start. Then read AGENTS.md and start building Phase 1.

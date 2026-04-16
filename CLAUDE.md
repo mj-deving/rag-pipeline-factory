@@ -2,9 +2,28 @@
 
 ## Project
 
-Meta-workflow that builds, deploys, and tests RAG pipelines via n8nac + code-mode. Describe your data sources, vector store, and query interface — the agent generates a complete n8n workflow, pushes it, and validates it end-to-end.
+Meta-workflow that builds, deploys, and tests RAG pipelines via n8nac + code-mode. The user describes data sources, vector store, and query interface — the factory agent generates a complete n8n workflow (.workflow.ts), pushes it to n8n, validates it, and tests it end-to-end.
+
+**This is code writing code** — the AI agent writes TypeScript that generates TypeScript workflow definitions.
+
+**Full build plan:** Read `docs/SESSION-KICKOFF.md` for architecture, phased plan, scope, and success criteria.
 
 **Roadmap source:** [code-first-n8n/docs/ROADMAP.md](https://github.com/mj-deving/code-first-n8n/blob/main/docs/ROADMAP.md) — Tier 1, Item #1
+
+## n8n Instance
+
+- **Host:** `http://172.31.224.1:5678` (Windows n8n, accessed from WSL via vEthernet bridge — NOT localhost)
+- **Auth header:** `X-N8N-API-KEY` (NOT `Authorization: Bearer`)
+- **Env vars:** `$N8N_API_KEY` and `$N8N_HOST` set in `~/.bashrc`
+- **workflowDir:** `workflows/172_31_224_1:5678_marius _j/personal/`
+
+## n8n Credentials
+
+| Credential | ID | Type | Use For |
+|---|---|---|---|
+| OpenRouter | `mOL6UoYXfgKf6RZh` | openAiApi | LLM (Haiku) + Embeddings |
+| Google Gemini | `FVE8T8mYCgIRpSyv` | googlePalmApi | Embeddings alternative |
+| Telegram Bot | `nzmbw9ZNGZdA9sZp` | telegramApi | Optional notification |
 
 ## Before Any Work
 
@@ -77,3 +96,4 @@ n8n Code nodes run in a restricted sandbox. These rules apply to ALL Code nodes 
 - **Gemini + n8n tools = broken** — Gemini 2.0/2.5 Flash sends null tool arguments. Use Claude Haiku
 - **OpenRouter model IDs**: `anthropic/claude-haiku-4-5` works. `anthropic/claude-3.5-sonnet` is dead
 - **lmChatOpenAi typeVersion 1** accepts plain string model IDs. **Version 1.3** requires `{mode: 'list', value: 'model-id'}`
+- **Default LLM config for this project:** OpenRouter credential `mOL6UoYXfgKf6RZh`, model `anthropic/claude-haiku-4-5`, typeVersion 1.3
