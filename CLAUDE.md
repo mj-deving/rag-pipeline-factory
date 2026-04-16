@@ -1,4 +1,10 @@
-# CLAUDE.md — n8n Project
+# CLAUDE.md — RAG Pipeline Factory
+
+## Project
+
+Meta-workflow that builds, deploys, and tests RAG pipelines via n8nac + code-mode. Describe your data sources, vector store, and query interface — the agent generates a complete n8n workflow, pushes it, and validates it end-to-end.
+
+**Roadmap source:** [code-first-n8n/docs/ROADMAP.md](https://github.com/mj-deving/code-first-n8n/blob/main/docs/ROADMAP.md) — Tier 1, Item #1
 
 ## Before Any Work
 
