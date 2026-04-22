@@ -1,8 +1,6 @@
 # RAG Pipeline Factory
 
-![n8n](https://img.shields.io/badge/n8n-2.x-orange.svg)
-![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
-![Code-First](https://img.shields.io/badge/code--first-n8nac-blue.svg)
+![n8n](https://img.shields.io/badge/-n8n-EA4B71?style=flat-square) ![TypeScript](https://img.shields.io/badge/-TypeScript-3178C6?style=flat-square)
 
 **Tell it what you want in a chat — get a fully deployed, tested RAG pipeline in 74 seconds.** The factory generates workflow JSON from deterministic templates (not LLM guesswork), deploys to n8n, validates every node connection, and runs live tests — all from a single message.
 
